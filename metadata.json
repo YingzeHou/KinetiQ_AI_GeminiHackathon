@@ -1,0 +1,8 @@
+{
+  "name": "KinetiQ_AI",
+  "description": "Your Personal AI Sport Coach using Gemini 3 Pro for advanced motion analysis, with smart video annotation and live coach mode",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
