@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Screen, SportType, AnalysisResult } from './types';
 import { analyzeVideo, generateVisualCorrection } from './services/geminiService';
 
@@ -13,9 +13,10 @@ import ResultPage from './pages/ResultPage';
 import NavBar from './components/NavBar';
 import CameraRecorder from './components/CameraRecorder';
 import LiveCoach from './components/LiveCoach';
-import { Sparkles, X } from 'lucide-react';
+import { Sparkles, X, ShieldCheck, ExternalLink, Zap } from 'lucide-react';
 
 const App: React.FC = () => {
+  const [isKeySelected, setIsKeySelected] = useState<boolean | null>(null);
   const [currentScreen, setCurrentScreen] = useState<Screen>(Screen.HOME);
   const [selectedSport, setSelectedSport] = useState<SportType>(SportType.TENNIS);
   const [selectedAction, setSelectedAction] = useState<string>('');
@@ -25,9 +26,28 @@ const App: React.FC = () => {
   const [analysisStage, setAnalysisStage] = useState('Starting professional analysis...');
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [showCamera, setShowCamera] = useState(false);
-
-  // Visualization State (for viewing already generated images)
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkKey = async () => {
+      if (typeof window.aistudio !== 'undefined') {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        setIsKeySelected(hasKey);
+      } else {
+        // Fallback for non-AI Studio environments (if applicable)
+        setIsKeySelected(true);
+      }
+    };
+    checkKey();
+  }, []);
+
+  const handleSelectKey = async () => {
+    if (typeof window.aistudio !== 'undefined') {
+      await window.aistudio.openSelectKey();
+      // Assume success as per guidelines to avoid race condition
+      setIsKeySelected(true);
+    }
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -49,10 +69,8 @@ const App: React.FC = () => {
       reader.onload = async () => {
         const base64String = (reader.result as string).split(',')[1];
         try {
-          // STEP 1: Biomechanical Text Analysis
           const result = await analyzeVideo(base64String, selectedSport, selectedAction, videoFile.type);
           
-          // STEP 2: Automate Visual Keyframes in Background
           const tempVideo = document.createElement('video');
           tempVideo.src = videoPreview!;
           tempVideo.crossOrigin = "anonymous";
@@ -63,7 +81,6 @@ const App: React.FC = () => {
             const ts = result.timestamps[i];
             setAnalysisStage(`AI Vision Scan ${i + 1}/${result.timestamps.length}...`);
             
-            // Extract specific frame
             const frameBase64 = await new Promise<string>((resolve) => {
               const onSeeked = () => {
                 tempVideo.removeEventListener('seeked', onSeeked);
@@ -78,19 +95,18 @@ const App: React.FC = () => {
               tempVideo.addEventListener('seeked', onSeeked);
             });
 
-            // Call coordinate extraction + drawing logic
             try {
               const visualImage = await generateVisualCorrection(
                 frameBase64, 
                 ts.issue, 
                 selectedSport, 
                 ts.bodyPartTags,
-                ts.bodyPartStatuses // Pass statuses for color coding
+                ts.bodyPartStatuses
               );
               updatedTimestamps.push({ ...ts, visualImage });
             } catch (vErr) {
-              console.error("Failed to generate one visualization", vErr);
-              updatedTimestamps.push(ts); // Fallback
+              console.error("Failed visualization", vErr);
+              updatedTimestamps.push(ts);
             }
           }
 
@@ -113,6 +129,45 @@ const App: React.FC = () => {
   const handleViewVisualization = (image: string) => {
     setSelectedImage(image);
   };
+
+  if (isKeySelected === false) {
+    return (
+      <div className="bg-dark-900 min-h-screen text-white flex flex-col items-center justify-center p-8 max-w-md mx-auto">
+        <div className="w-20 h-20 bg-primary/20 rounded-3xl flex items-center justify-center mb-8 text-primary shadow-2xl shadow-primary/20">
+          <ShieldCheck size={48} />
+        </div>
+        <h1 className="text-3xl font-black mb-4 text-center">KinetiQ Pro</h1>
+        <p className="text-gray-400 text-center mb-10 leading-relaxed">
+          To access elite real-time biomechanical analysis, you must link an API key from a paid Google Cloud project.
+        </p>
+        <div className="w-full space-y-4">
+          <button 
+            onClick={handleSelectKey}
+            className="w-full bg-primary hover:bg-secondary text-black font-black py-5 rounded-2xl flex items-center justify-center gap-3 transition-transform active:scale-95 shadow-xl shadow-primary/20"
+          >
+            <Zap size={20} fill="currentColor" /> Link Gemini AI Key
+          </button>
+          <a 
+            href="https://ai.google.dev/gemini-api/docs/billing" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="w-full bg-dark-800 border border-white/5 text-gray-400 font-bold py-4 rounded-2xl flex items-center justify-center gap-2 hover:bg-dark-700 transition-colors"
+          >
+            Billing Documentation <ExternalLink size={16} />
+          </a>
+        </div>
+        <p className="mt-12 text-[10px] text-gray-600 uppercase tracking-widest font-black">AI Technical Biomechanics v3.0</p>
+      </div>
+    );
+  }
+
+  if (isKeySelected === null) {
+    return (
+      <div className="bg-dark-900 min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-black min-h-screen text-white font-sans max-w-md mx-auto relative shadow-2xl overflow-hidden">
